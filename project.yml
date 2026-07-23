@@ -1,0 +1,38 @@
+name: Groot
+options:
+  bundleIdPrefix: org.groot
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+packages:
+  GrootKit:
+    path: .
+
+targets:
+  GrootApp:
+    type: application
+    platform: macOS
+    sources:
+      - path: GrootApp
+    dependencies:
+      - package: GrootKit
+        product: GrootKit
+    settings:
+      base:
+        PRODUCT_NAME: Groot
+        PRODUCT_BUNDLE_IDENTIFIER: org.groot.app
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: GrootApp/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: GrootApp/Resources/Groot.entitlements
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        # Local dev signing. For notarized distribution, switch to a Developer ID
+        # identity and enable hardened runtime.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""
+        ENABLE_HARDENED_RUNTIME: NO
+        COMBINE_HIDPI_IMAGES: YES

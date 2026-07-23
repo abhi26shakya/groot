@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>Groot</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>Groot</string>
+    <key>CFBundleDisplayName</key>
+    <string>Groot</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$(MARKETING_VERSION)</string>
+    <key>CFBundleVersion</key>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <!-- Normal app: shows a Dock icon plus a menu-bar extra. -->
+    <key>LSUIElement</key>
+    <false/>
+    <key>NSHumanReadableCopyright</key>
+    <string>© 2026 Groot</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <!-- Screenshots typically land on the Desktop; monitoring reads there. -->
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>Groot watches your Desktop to detect and organize new screenshots and files.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>Groot watches your Downloads to help keep it organized.</string>
+</dict>
+</plist>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Direct/notarized distribution: NOT sandboxed, so the app can monitor
+         arbitrary folders and request Full Disk Access. -->
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
+    <!-- Allow localhost connections to an optional Ollama server. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+</dict>
+</plist>
