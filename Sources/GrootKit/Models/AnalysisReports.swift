@@ -116,6 +116,20 @@ public struct LargeFileReport: Sendable, Hashable {
     public var totalBytes: UInt64 { entries.reduce(0) { $0 + $1.sizeBytes } }
 }
 
+/// Result of an empty-folder scan.
+public struct EmptyFolderReport: Sendable, Hashable {
+    /// Top-level empty folders — nested empty subfolders are collapsed into
+    /// their outermost empty ancestor, since trashing it removes the whole
+    /// (empty) subtree.
+    public let paths: [String]
+    public let scannedAt: Date
+
+    public init(paths: [String], scannedAt: Date = Date()) {
+        self.paths = paths
+        self.scannedAt = scannedAt
+    }
+}
+
 /// Shared byte formatting for UI and log messages.
 public enum ByteFormat {
     public static func string(_ bytes: UInt64) -> String {

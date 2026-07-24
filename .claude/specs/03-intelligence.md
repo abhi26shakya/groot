@@ -34,7 +34,16 @@ file-management capabilities.
   **deferred**: no archive-creation infrastructure exists yet in GrootKit
   (would need Apple's `Compression` framework or a `ditto`/`zip` shell-out) —
   a future follow-up, not part of this deliverable.
-- **Empty Folder Cleanup** — detect + preview + confirm.
+- ✅ **Empty Folder Cleanup** — detect + preview + confirm. Shipped as
+  `EmptyFolderCleanupAgent` (`Sources/GrootKit/Agents/EmptyFolderCleanupAgent.swift`):
+  command-driven (`.command(.scanEmptyFolders)`, mirroring
+  `DuplicateDetectionAgent`/`LargeFileManagerAgent`), recursively finds empty
+  folders (a folder containing only hidden files or other recursively-empty
+  folders counts as empty; nested empty folders collapse to their outermost
+  empty ancestor), and raises a single bulk `ApprovalRequest` to trash them —
+  always approval-gated regardless of autonomy since deletion is destructive.
+  Packages/bundles (`.app`, `.bundle`, …) are treated as opaque content, never
+  flagged or descended into.
 - **Intelligent Trash Management** — estimate recoverable space, check backup
   availability, summarize, require approval before emptying.
 - **Similar Image Detection** — Vision feature prints for burst/near-duplicate/

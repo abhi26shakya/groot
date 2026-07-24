@@ -137,9 +137,16 @@ public enum RuntimeComposer {
             action: await settings?.largeFileAction() ?? .archive,
             autonomy: await autonomy("large-file-manager", .approval))
 
+        let emptyFolderCleanup = EmptyFolderCleanupAgent(
+            roots: roots,
+            excludedRoots: [organizedRoot, screenshotsRoot],
+            fileService: fileService,
+            approvals: approvals,
+            autonomy: await autonomy("empty-folder-cleanup", .approval))
+
         let agents: [any Agent] = [
             monitor, screenshot, downloadsOrganizer, desktopCleaner, duplicates, storage,
-            categorization, smartRename, largeFileManager
+            categorization, smartRename, largeFileManager, emptyFolderCleanup
         ]
         for agent in agents { await manager.register(agent) }
         await manager.startEventPump()

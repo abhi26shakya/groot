@@ -27,6 +27,8 @@ public enum BusEvent: Sendable {
     case storageAnalyzed(StorageReport)
     /// The Large File Manager finished a scan.
     case largeFilesFound(LargeFileReport)
+    /// The Empty Folder Cleanup agent finished a scan.
+    case emptyFoldersFound(EmptyFolderReport)
 
     // MARK: Timing
     /// Periodic tick the coordinator broadcasts so agents can do time-based work

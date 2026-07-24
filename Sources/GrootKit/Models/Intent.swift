@@ -11,6 +11,7 @@ public enum Intent: Sendable, Hashable, Codable {
     case scanDuplicates
     case analyzeStorage
     case scanLargeFiles
+    case scanEmptyFolders
     case pauseAll
     case resumeAll
     /// Lifecycle command targeting a single agent.
