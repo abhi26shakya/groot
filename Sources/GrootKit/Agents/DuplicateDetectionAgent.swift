@@ -5,20 +5,22 @@ import CryptoKit
 /// asks permission before recovering space. **Never deletes automatically** —
 /// deletion is destructive, so it always routes through an `ApprovalRequest`,
 /// and even then duplicates go to the Trash (recoverable), never `unlink`.
-public actor DuplicateDetectionAgent: ApprovingAgent {
+public actor DuplicateDetectionAgent: CoreAgent {
     public nonisolated let descriptor: AgentDescriptor
-    public private(set) var state: AgentState = .idle
+    public var core: AgentCore
     public var autonomy: AutonomyMode
 
     private let roots: [URL]
     private let fileService: FileService
     private let scanner: FileScanner
-    private var bus: MessageBus?
-    private var pending: [UUID: [String]] = [:] // requestID → duplicate paths to trash
+    /// The safety gate. Trashing is destructive, so this agent can never act
+    /// without an explicit answer — in ANY autonomy mode.
+    private let approvals: ApprovalService?
 
     public init(
         roots: [URL],
         fileService: FileService,
+        approvals: ApprovalService? = nil,
         autonomy: AutonomyMode = .approval,
         id: AgentID = "duplicate-detector",
         name: String = "Duplicates",
@@ -27,34 +29,33 @@ public actor DuplicateDetectionAgent: ApprovingAgent {
     ) {
         self.roots = roots
         self.fileService = fileService
+        self.approvals = approvals
         self.scanner = FileScanner()
         self.autonomy = autonomy
-        self.descriptor = AgentDescriptor(id: id, name: name, colorHex: colorHex, symbol: symbol)
+        let descriptor = AgentDescriptor(id: id, name: name, colorHex: colorHex, symbol: symbol)
+        self.descriptor = descriptor
+        self.core = AgentCore(descriptor: descriptor, idleTask: "idle")
     }
 
-    public func attach(to bus: MessageBus) async { self.bus = bus }
 
-    public func start() async { state = .running; await report(task: "idle", last: "started") }
-    public func pause() async { guard state == .running else { return }; state = .paused; await report(task: nil, last: "paused") }
-    public func resume() async { guard state == .paused else { return }; state = .running; await report(task: "idle", last: "resumed") }
-    public func stop() async { state = .stopped; await report(task: nil, last: "stopped") }
+    // Lifecycle, `attach` and `state` come from the `CoreAgent` extension.
 
     public func handle(_ event: BusEvent) async {
-        guard state == .running else { return }
+        guard core.isRunning else { return }
         if case .command(.scanDuplicates) = event { await scan() }
     }
 
     /// Scan all roots, group identical files, publish a report + an approval
     /// request for reclaiming the recoverable space.
     public func scan() async {
-        await report(task: "scanning for duplicates…", progress: nil, last: nil)
+        await core.report(task: "scanning for duplicates…", progress: nil, last: nil)
         let files = scanner.scan(roots: roots)
         let groups = Self.groupDuplicates(files)
         let reportModel = DuplicateReport(groups: groups)
-        await bus?.publish(.duplicatesFound(reportModel))
+        await core.publish(.duplicatesFound(reportModel))
 
         guard !groups.isEmpty else {
-            await report(task: "idle", last: "no duplicates found")
+            await core.report(task: "idle", last: "no duplicates found")
             return
         }
 
@@ -66,32 +67,43 @@ public actor DuplicateDetectionAgent: ApprovingAgent {
                   + "Originals are kept; duplicates move to the Trash.",
             itemCount: reportModel.duplicateCount,
             bytesAffected: recoverable,
-            isDestructive: true)
-        pending[request.id] = groups.flatMap(\.duplicates)
-        await bus?.publish(.approvalRequested(request))
-        await report(task: "idle",
+            isDestructive: FileOperationKind.trash.isDestructive)
+
+        await core.report(task: "idle",
                      last: "found \(reportModel.duplicateCount) dupes · \(ByteFormat.string(recoverable)) recoverable")
+
+        // `.trash` is destructive, so `ApprovalPolicy` routes this to the user
+        // even under `.autopilot`. The agent doesn't get a say.
+        switch await ApprovalService.evaluate(request, autonomy: autonomy, using: approvals) {
+        case .proceed:
+            await trashDuplicates(groups.flatMap(\.duplicates))
+        case .previewOnly, .declined:
+            await core.report(task: "idle", last: "kept all files")
+        }
     }
 
-    public func approve(_ requestID: UUID) async {
-        guard let paths = pending.removeValue(forKey: requestID) else { return }
+    /// Move approved duplicates to the Trash. Originals are never touched, and
+    /// nothing is `unlink`ed — items stay recoverable from the Finder Trash.
+    private func trashDuplicates(_ paths: [String]) async {
         var trashed = 0
+        var skipped = 0
         for path in paths {
             do {
                 let entry = try await fileService.trash(URL(fileURLWithPath: path), agentID: descriptor.id)
-                await bus?.publish(.operationJournaled(entry))
+                await core.journaled(entry)
                 trashed += 1
             } catch {
-                // Skip files that vanished/changed since the scan.
-                continue
+                // A file that vanished or changed since the scan is expected, not
+                // fatal — but it's still worth logging rather than swallowing.
+                skipped += 1
+                GrootLog.fileops.notice(
+                    "skipped duplicate \(path, privacy: .public): \(String(describing: error), privacy: .public)")
             }
         }
-        await report(task: "idle", last: "trashed \(trashed) duplicate(s)")
-    }
-
-    public func reject(_ requestID: UUID) async {
-        guard pending.removeValue(forKey: requestID) != nil else { return }
-        await report(task: "idle", last: "kept all files")
+        let summary = skipped == 0
+            ? "trashed \(trashed) duplicate(s)"
+            : "trashed \(trashed), skipped \(skipped) that changed since the scan"
+        await core.report(task: "idle", last: summary)
     }
 
     // MARK: Pure grouping (unit-tested)
@@ -137,9 +149,4 @@ public actor DuplicateDetectionAgent: ApprovingAgent {
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
-    private func report(task: String?, progress: Double? = nil, last: String?) async {
-        await bus?.publish(.agentReport(AgentReport(
-            agentID: descriptor.id, state: state, currentTask: task,
-            progress: progress, lastAction: last)))
-    }
 }

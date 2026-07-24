@@ -4,14 +4,13 @@ import Foundation
 /// recommendations ("Downloads contains 3.2 GB of installers") plus a
 /// largest-files list — not just raw numbers. Read-only: it never moves or
 /// deletes anything, it only reports.
-public actor StorageAnalyzerAgent: Agent {
+public actor StorageAnalyzerAgent: CoreAgent {
     public nonisolated let descriptor: AgentDescriptor
-    public private(set) var state: AgentState = .idle
+    public var core: AgentCore
     public var autonomy: AutonomyMode
 
     private let roots: [URL]
     private let scanner: FileScanner
-    private var bus: MessageBus?
 
     /// Files at/above this size are called out individually.
     private let largeFileThreshold: UInt64 = 500 * 1024 * 1024 // 500 MB
@@ -27,27 +26,25 @@ public actor StorageAnalyzerAgent: Agent {
         self.roots = roots
         self.scanner = FileScanner()
         self.autonomy = autonomy
-        self.descriptor = AgentDescriptor(id: id, name: name, colorHex: colorHex, symbol: symbol)
+        let descriptor = AgentDescriptor(id: id, name: name, colorHex: colorHex, symbol: symbol)
+        self.descriptor = descriptor
+        self.core = AgentCore(descriptor: descriptor, idleTask: "idle")
     }
 
-    public func attach(to bus: MessageBus) async { self.bus = bus }
 
-    public func start() async { state = .running; await report(task: "idle", last: "started") }
-    public func pause() async { guard state == .running else { return }; state = .paused; await report(task: nil, last: "paused") }
-    public func resume() async { guard state == .paused else { return }; state = .running; await report(task: "idle", last: "resumed") }
-    public func stop() async { state = .stopped; await report(task: nil, last: "stopped") }
+    // Lifecycle, `attach` and `state` come from the `CoreAgent` extension.
 
     public func handle(_ event: BusEvent) async {
-        guard state == .running else { return }
+        guard core.isRunning else { return }
         if case .command(.analyzeStorage) = event { await analyze() }
     }
 
     public func analyze() async {
-        await report(task: "analyzing storage…", last: nil)
+        await core.report(task: "analyzing storage…", last: nil)
         let files = scanner.scan(roots: roots)
         let storageReport = Self.buildReport(files, largeFileThreshold: largeFileThreshold)
-        await bus?.publish(.storageAnalyzed(storageReport))
-        await report(task: "idle",
+        await core.publish(.storageAnalyzed(storageReport))
+        await core.report(task: "idle",
                      last: "analyzed \(ByteFormat.string(storageReport.totalScannedBytes)) across \(files.count) files")
     }
 
@@ -95,8 +92,4 @@ public actor StorageAnalyzerAgent: Agent {
             totalScannedBytes: total)
     }
 
-    private func report(task: String?, last: String?) async {
-        await bus?.publish(.agentReport(AgentReport(
-            agentID: descriptor.id, state: state, currentTask: task, lastAction: last)))
-    }
 }

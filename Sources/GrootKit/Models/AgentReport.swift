@@ -15,6 +15,9 @@ public struct AgentReport: Sendable, Hashable, Codable {
     public let cpu: Double
     /// Approximate resident memory attributed to this agent, in bytes.
     public let memoryBytes: UInt64
+    /// Failure/saturation information. Defaulted, so existing call sites that
+    /// only report task/progress compile unchanged.
+    public let health: AgentHealth
     public let timestamp: Date
 
     public init(
@@ -25,6 +28,7 @@ public struct AgentReport: Sendable, Hashable, Codable {
         lastAction: String? = nil,
         cpu: Double = 0,
         memoryBytes: UInt64 = 0,
+        health: AgentHealth = .healthy,
         timestamp: Date = Date()
     ) {
         self.agentID = agentID
@@ -34,6 +38,7 @@ public struct AgentReport: Sendable, Hashable, Codable {
         self.lastAction = lastAction
         self.cpu = min(max(cpu, 0), 1)
         self.memoryBytes = memoryBytes
+        self.health = health
         self.timestamp = timestamp
     }
 }

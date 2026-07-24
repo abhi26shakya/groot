@@ -7,26 +7,25 @@ import Foundation
 /// Renaming a screenshot is reversible and non-destructive, so under
 /// `.autopilot` it acts immediately; under `.approval` it asks first; under
 /// `.preview` it only proposes.
-public actor ScreenshotAgent: ApprovingAgent {
+public actor ScreenshotAgent: CoreAgent {
     public nonisolated let descriptor: AgentDescriptor
-    public private(set) var state: AgentState = .idle
+    public var core: AgentCore
     public var autonomy: AutonomyMode
 
     private let recognizer: TextRecognizing
     private let suggester: FilenameSuggester
     private let fileService: FileService
+    /// The safety gate. Injected, so tests can supply one with a short timeout.
+    private let approvals: ApprovalService?
     private let screenshotsRoot: URL
 
-    private var bus: MessageBus?
     private var organizedCount = 0
-
-    /// Proposals awaiting user approval, keyed by the ApprovalRequest id.
-    private var pending: [UUID: (source: URL, destination: URL)] = [:]
 
     public init(
         recognizer: TextRecognizing,
         suggester: FilenameSuggester,
         fileService: FileService,
+        approvals: ApprovalService? = nil,
         screenshotsRoot: URL? = nil,
         autonomy: AutonomyMode = .approval,
         id: AgentID = "screenshot",
@@ -37,49 +36,32 @@ public actor ScreenshotAgent: ApprovingAgent {
         self.recognizer = recognizer
         self.suggester = suggester
         self.fileService = fileService
+        self.approvals = approvals
         self.screenshotsRoot = screenshotsRoot
             ?? FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("Screenshots", isDirectory: true)
         self.autonomy = autonomy
-        self.descriptor = AgentDescriptor(id: id, name: name, colorHex: colorHex, symbol: symbol)
+        let descriptor = AgentDescriptor(id: id, name: name, colorHex: colorHex, symbol: symbol)
+        self.descriptor = descriptor
+        self.core = AgentCore(descriptor: descriptor, idleTask: "idle")
     }
 
-    public func attach(to bus: MessageBus) async {
-        self.bus = bus
-    }
 
     // MARK: Lifecycle
 
-    public func start() async {
-        state = .running
-        await report(task: "idle", last: "started")
-    }
-    public func pause() async {
-        guard state == .running else { return }
-        state = .paused
-        await report(task: nil, last: "paused")
-    }
-    public func resume() async {
-        guard state == .paused else { return }
-        state = .running
-        await report(task: "idle", last: "resumed")
-    }
-    public func stop() async {
-        state = .stopped
-        await report(task: nil, last: "stopped")
-    }
+    // Lifecycle, `attach` and `state` come from the `CoreAgent` extension.
 
     // MARK: Events
 
     public func handle(_ event: BusEvent) async {
-        guard state == .running else { return }
+        guard core.isRunning else { return }
         guard case .fileCreated(let url) = event, Self.isScreenshot(url) else { return }
         await process(url)
     }
 
     /// The core pipeline: OCR → suggest name → act per autonomy mode.
     private func process(_ url: URL) async {
-        await report(task: "reading \(url.lastPathComponent)", last: nil)
+        await core.report(task: "reading \(url.lastPathComponent)", last: nil)
 
         let ocrText = (try? await recognizer.recognizeText(in: url)) ?? ""
         let base = await suggester.suggest(ocrText: ocrText, original: url)
@@ -88,38 +70,28 @@ public actor ScreenshotAgent: ApprovingAgent {
             ext: url.pathExtension.isEmpty ? "png" : url.pathExtension,
             in: monthFolder(for: Date()))
 
-        switch autonomy {
-        case .preview:
-            await report(task: nil,
-                         last: "proposed → \(destination.lastPathComponent)")
+        // Renaming is reversible, so `.autopilot` proceeds without asking — but
+        // the decision is `ApprovalService`'s to make, never the agent's.
+        let request = ApprovalRequest(
+            agentID: descriptor.id,
+            summary: "Rename screenshot to “\(destination.lastPathComponent)”",
+            detail: "Move into \(destination.deletingLastPathComponent().path)",
+            itemCount: 1,
+            bytesAffected: fileSize(url),
+            isDestructive: FileOperationKind.rename.isDestructive)
 
-        case .approval:
-            let request = ApprovalRequest(
-                agentID: descriptor.id,
-                summary: "Rename screenshot to “\(destination.lastPathComponent)”",
-                detail: "Move into \(destination.deletingLastPathComponent().path)",
-                itemCount: 1,
-                bytesAffected: fileSize(url),
-                isDestructive: false)
-            pending[request.id] = (url, destination)
-            await bus?.publish(.approvalRequested(request))
-            await report(task: nil, last: "awaiting approval for \(destination.lastPathComponent)")
-
-        case .autopilot:
+        switch await decide(request) {
+        case .proceed:
             await perform(source: url, destination: destination)
+        case .previewOnly:
+            await core.report(task: nil, last: "proposed → \(destination.lastPathComponent)")
+        case .declined:
+            await core.report(task: "idle", last: "skipped \(url.lastPathComponent)")
         }
     }
 
-    /// Approve a pending proposal (invoked by the UI). Performs the move.
-    public func approve(_ requestID: UUID) async {
-        guard let job = pending.removeValue(forKey: requestID) else { return }
-        await perform(source: job.source, destination: job.destination)
-    }
-
-    /// Reject a pending proposal — discard it, leave the file untouched.
-    public func reject(_ requestID: UUID) async {
-        guard let job = pending.removeValue(forKey: requestID) else { return }
-        await report(task: "idle", last: "skipped \(job.source.lastPathComponent)")
+    private func decide(_ request: ApprovalRequest) async -> ApprovalOutcome {
+        await ApprovalService.evaluate(request, autonomy: autonomy, using: approvals)
     }
 
     /// The actual reversible rename, shared by autopilot and post-approval paths.
@@ -129,10 +101,10 @@ public actor ScreenshotAgent: ApprovingAgent {
                 from: source, to: destination, agentID: descriptor.id, kind: .rename)
             organizedCount += 1
             // Tell the File Monitor this write was ours (loop guard).
-            await bus?.publish(.operationJournaled(entry))
-            await report(task: "idle", last: "renamed → \(destination.lastPathComponent)")
+            await core.journaled(entry)
+            await core.report(task: "idle", last: "renamed → \(destination.lastPathComponent)")
         } catch {
-            await report(task: "idle", last: "failed: \(error)")
+            await core.fail("rename failed: \(error)", userFacing: "could not rename \(source.lastPathComponent)")
         }
     }
 
@@ -174,11 +146,4 @@ public actor ScreenshotAgent: ApprovingAgent {
     /// Exposed for tests/diagnostics.
     public var organized: Int { organizedCount }
 
-    private func report(task: String?, last: String?) async {
-        await bus?.publish(.agentReport(AgentReport(
-            agentID: descriptor.id,
-            state: state,
-            currentTask: task,
-            lastAction: last)))
-    }
 }
