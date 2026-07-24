@@ -46,6 +46,13 @@ struct MenuBarView: View {
                 Label("Open Dashboard", systemImage: "square.grid.2x2")
             }
 
+            Button {
+                openWindow(id: "recovery")
+                NSApp.activate(ignoringOtherApps: true)
+            } label: {
+                Label("Open Recovery Center", systemImage: "clock.arrow.circlepath")
+            }
+
             Toggle(isOn: Binding(
                 get: { model.showBubbles },
                 set: { on in

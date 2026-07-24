@@ -3,6 +3,7 @@ import GrootKit
 
 struct DashboardView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         ScrollView {
@@ -102,6 +103,12 @@ struct DashboardView: View {
                 Task { await model.organizeDesktop() }
             }
             Spacer()
+            Button {
+                openWindow(id: "recovery")
+            } label: {
+                Label("Recovery Center", systemImage: "clock.arrow.circlepath")
+            }
+            .buttonStyle(.bordered)
         }
     }
 

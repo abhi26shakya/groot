@@ -27,7 +27,7 @@ New files under `GrootApp/` need `xcodegen generate` before Xcode sees them
 ## Testing
 
 ```bash
-swift test                                          # full suite (128 tests)
+swift test                                          # full suite (140 tests)
 swift test --filter ScreenshotAgentTests             # one test class
 swift test --filter ScreenshotAgentTests/testDetection  # one test
 ```

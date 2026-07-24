@@ -51,7 +51,7 @@ Sources/GrootKit/     the headless runtime + all agents (SwiftPM library)
   Agents/             one actor per capability
   Services/           FileService, ApprovalService, SettingsStore, AI/…
   Models/             BusEvent, JournalEntry, AgentIdentity, …
-Tests/GrootKitTests/  swift test — 128 tests, all headless
+Tests/GrootKitTests/  swift test — 140 tests, all headless
 GrootApp/             SwiftUI app: menu bar, dashboard, bubble panel
 Package.swift         source of truth for GrootKit
 project.yml           XcodeGen input; Groot.xcodeproj is generated, not committed
@@ -105,8 +105,17 @@ in the dashboard.
   `CategorizerUseCase`, gated by the same safety model as every other agent —
   see [`docs/features/08-ai-categorization.md`](docs/features/08-ai-categorization.md).
 
-All seven agents + the composition root are covered by **128 GrootKit tests**
+All seven agents + the composition root are covered by **140 GrootKit tests**
 (`swift test`).
+
+## Status — Phase 06 (Recovery Center & Undo History) ✅
+
+A dedicated **Recovery Center** window — the capstone of the safety model.
+Trash is now reversible in-app (`FileService` captures the resulting Trash
+URL and `restore(_:)` moves it back), and the journal is filterable/searchable
+by agent, operation kind, revert-state, and text, with multi-select batch
+restore and filesystem-inert retention controls. See
+[`docs/features/06-recovery-center.md`](docs/features/06-recovery-center.md).
 
 ## Status — Phase 0 (foundation) ✅
 
@@ -141,9 +150,10 @@ Phase 0 is intentionally **dependency-free** so it builds offline.
 ## Next steps
 
 See the still-planned phases in [`.claude/specs/README.md`](.claude/specs/README.md):
-**03 Intelligence**, **04 Interaction & Learning**, **05 Platform**, and
-**06 Recovery Center & Undo History**. Add the next phase spec with
-`/create-spec`.
+**03 Intelligence** (remaining items — Smart Renaming, Large File Manager,
+Empty Folder Cleanup, Intelligent Trash Management, Similar Image Detection),
+**04 Interaction & Learning**, and **05 Platform**. Add the next phase spec
+with `/create-spec`.
 
 ## Local AI dependency
 

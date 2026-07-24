@@ -56,8 +56,8 @@ Groot.xcodeproj         ─┘  Thin UI layer. Links GrootKit as a package produ
 
 | Service | Responsibility |
 |---|---|
-| `FileService` | **The only path that mutates the filesystem.** Journals a `JournalEntry` *before* acting (powers Undo / Recovery / activity log). Deletes go to Trash (`trashItem`), never `unlink`. Refuses to clobber an existing destination. |
-| `JournalStore` | Persistence boundary for journal entries. `InMemoryJournalStore` (tests) or `SQLiteJournalStore` (production, over `GrootDatabase`). |
+| `FileService` | **The only path that mutates the filesystem.** Journals a `JournalEntry` *before* acting (powers Undo / Recovery / activity log). Deletes go to Trash (`trashItem`), capturing the resulting Trash URL so `restore(_:)` can move it back — never `unlink`. Refuses to clobber an existing destination. |
+| `JournalStore` | Persistence boundary for journal entries. `InMemoryJournalStore` (tests) or `SQLiteJournalStore` (production, over `GrootDatabase`). Also the query/retention API (`entries(matching: JournalFilter)`, `deleteEntries(olderThan:revertedOnly:)`, `deleteAll()`) behind the Recovery Center. |
 | `ApprovalService` | Publishes `.approvalRequested` and resolves `approve(_:)`/`reject(_:)` for any agent conforming to `ApprovingAgent`; `ApprovalService.evaluate` is the shared preview/approval/autopilot decision point every agent calls before acting. |
 | `SettingsStore` | Per-agent autonomy mode, watched roots, custom categories, Ollama toggle/model, categorization threshold — all persisted in `GrootDatabase`. |
 | `GrootDatabase` | Thin wrapper over system `libsqlite3` (no external dependency). Schema for journal, settings, categories. |
@@ -126,6 +126,15 @@ fails)      configurable)                            or empty result)
 regardless of configured mode.** `ScreenshotAgent` is the reference
 implementation of the full loop; every other agent reuses
 `ApprovalService.evaluate` rather than reimplementing the decision.
+
+`isDestructive` is deliberately independent of `isReversibleInApp`: trash is
+*destructive* (always needs approval to run) yet still *reversible in-app*
+(the item's resulting Trash URL is journaled, so the Recovery Center can move
+it back) — the two flags answer different questions and both stay true for
+`.trash`. The **Recovery Center** (`GrootApp/UI/Recovery/`) is the capstone of
+this model: every journaled operation is listed, filterable, searchable, and
+individually or batch-restorable, and its retention controls (`clearHistory`,
+`clearAllHistory`) only ever remove journal rows — never a file on disk.
 
 ## App wiring (GrootApp)
 

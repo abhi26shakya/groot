@@ -23,7 +23,7 @@ anywhere else. New specs are created with the `/create-spec` command
 | 03 | Intelligence | 🔜 Planned | [03-intelligence.md](03-intelligence.md) |
 | 04 | Interaction & Learning | 🔜 Planned | [04-interaction-and-learning.md](04-interaction-and-learning.md) |
 | 05 | Platform | 🔜 Planned | [05-platform.md](05-platform.md) |
-| 06 | Recovery Center & Undo History | 🔜 Planned | [06-recovery-center.md](06-recovery-center.md) |
+| 06 | Recovery Center & Undo History | ✅ Complete | [06-recovery-center.md](06-recovery-center.md) |
 | 07 | System Architecture — Core Services Layer | ✅ Complete | [07-system-architecture.md](07-system-architecture.md) |
 | 08 | AI Categorization Agent — Content-Aware Sorting | ✅ Complete | [08-ai-categorization.md](08-ai-categorization.md) |
 
