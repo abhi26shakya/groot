@@ -33,7 +33,7 @@ struct RecoveryFilterBar: View {
             Menu(kindLabel) {
                 Button("All kinds") { kindFilter = [] }
                 Divider()
-                ForEach([FileOperationKind.move, .rename, .trash], id: \.self) { kind in
+                ForEach([FileOperationKind.move, .rename, .trash, .permanentDelete], id: \.self) { kind in
                     Button {
                         toggle(kind)
                     } label: {

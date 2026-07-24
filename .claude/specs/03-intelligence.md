@@ -44,8 +44,21 @@ file-management capabilities.
   always approval-gated regardless of autonomy since deletion is destructive.
   Packages/bundles (`.app`, `.bundle`, …) are treated as opaque content, never
   flagged or descended into.
-- **Intelligent Trash Management** — estimate recoverable space, check backup
-  availability, summarize, require approval before emptying.
+- ✅ **Intelligent Trash Management** — estimate recoverable space, check backup
+  availability, summarize, require approval before emptying. Shipped as
+  `TrashManagerAgent` (`Sources/GrootKit/Agents/TrashManagerAgent.swift`):
+  command-driven (`.command(.analyzeTrash)`, mirroring the other detect-agents),
+  scans `~/.Trash` top-level items (recursive size for folders), checks Time
+  Machine status via the new `BackupChecking` protocol
+  (`Sources/GrootKit/Services/BackupChecker.swift`; `TimeMachineBackupChecker`
+  shells to `tmutil latestbackup`, injectable so tests never touch the real
+  tool), and raises a single bulk `ApprovalRequest` to empty the Trash — always
+  gated regardless of autonomy, with the backup status surfaced in the
+  approval copy so the decision is informed, not just blocked. Emptying the
+  Trash is a genuinely new, irreversible operation: added
+  `FileOperationKind.permanentDelete` (`isReversibleInApp: false`,
+  `isDestructive: true`) and `FileService.permanentlyDelete(_:agentID:)`,
+  journaled purely as an audit record since there is nothing to restore.
 - **Similar Image Detection** — Vision feature prints for burst/near-duplicate/
   edited copies; recommend the highest-quality version.
 

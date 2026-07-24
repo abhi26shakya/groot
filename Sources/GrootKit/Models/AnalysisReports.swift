@@ -130,6 +130,35 @@ public struct EmptyFolderReport: Sendable, Hashable {
     }
 }
 
+/// Result of a Trash analysis.
+public struct TrashReport: Sendable, Hashable {
+    public let itemCount: Int
+    public let totalBytes: UInt64
+    /// The oldest item's modification date, if the Trash isn't empty.
+    public let oldestItemDate: Date?
+    /// The most recent backup's completion date, or `nil` if unknown/none.
+    public let latestBackupDate: Date?
+    public let scannedAt: Date
+
+    public init(
+        itemCount: Int, totalBytes: UInt64, oldestItemDate: Date?,
+        latestBackupDate: Date?, scannedAt: Date = Date()
+    ) {
+        self.itemCount = itemCount
+        self.totalBytes = totalBytes
+        self.oldestItemDate = oldestItemDate
+        self.latestBackupDate = latestBackupDate
+        self.scannedAt = scannedAt
+    }
+
+    /// No backup, or one older than a week — worth calling out before the
+    /// user permanently deletes anything.
+    public var backupIsStale: Bool {
+        guard let latestBackupDate else { return true }
+        return scannedAt.timeIntervalSince(latestBackupDate) > 7 * 86_400
+    }
+}
+
 /// Shared byte formatting for UI and log messages.
 public enum ByteFormat {
     public static func string(_ bytes: UInt64) -> String {

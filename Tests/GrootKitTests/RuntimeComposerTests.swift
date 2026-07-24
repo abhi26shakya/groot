@@ -35,7 +35,8 @@ final class RuntimeComposerTests: XCTestCase {
         XCTAssertEqual(Set(runtime.agentIDs.map(\.raw)), [
             "file-monitor", "screenshot", "downloads-organizer",
             "desktop-cleaner", "duplicate-detector", "storage-analyzer",
-            "categorization", "smart-rename", "large-file-manager", "empty-folder-cleanup"
+            "categorization", "smart-rename", "large-file-manager", "empty-folder-cleanup",
+            "trash-manager"
         ])
     }
 

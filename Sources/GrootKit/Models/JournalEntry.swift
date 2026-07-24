@@ -3,9 +3,10 @@ import Foundation
 /// The kind of mutating filesystem operation an agent performed. Drives Undo
 /// and the Recovery Center.
 public enum FileOperationKind: String, Sendable, Codable {
-    case move       // reversible: move source back to origin
-    case rename     // reversible: same as move, kept distinct for readable logs
-    case trash      // recoverable: item sits in ~/.Trash until trash is emptied
+    case move             // reversible: move source back to origin
+    case rename           // reversible: same as move, kept distinct for readable logs
+    case trash            // recoverable: item sits in ~/.Trash until trash is emptied
+    case permanentDelete  // irreversible: the Trash itself was emptied
 }
 
 /// Whether an operation can be undone in-app, and whether it destroys data.
@@ -17,9 +18,12 @@ public extension FileOperationKind {
     /// this entry's `destinationPath` — until the user empties Trash.
     var isReversibleInApp: Bool {
         switch self {
-        // Exhaustive (rather than `true`) so a future fourth kind forces an
+        // Exhaustive (rather than `true`) so a future fifth kind forces an
         // explicit decision here instead of silently inheriting one.
         case .move, .rename, .trash: return true
+        // Once the Trash is emptied, the item is gone for real — there is no
+        // `destinationPath` to restore from.
+        case .permanentDelete: return false
         }
     }
 
@@ -27,7 +31,7 @@ public extension FileOperationKind {
     var isDestructive: Bool {
         switch self {
         case .move, .rename: return false
-        case .trash: return true
+        case .trash, .permanentDelete: return true
         }
     }
 }

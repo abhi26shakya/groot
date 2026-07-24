@@ -29,6 +29,8 @@ public enum BusEvent: Sendable {
     case largeFilesFound(LargeFileReport)
     /// The Empty Folder Cleanup agent finished a scan.
     case emptyFoldersFound(EmptyFolderReport)
+    /// The Trash Manager finished analyzing the Trash.
+    case trashAnalyzed(TrashReport)
 
     // MARK: Timing
     /// Periodic tick the coordinator broadcasts so agents can do time-based work

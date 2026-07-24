@@ -90,6 +90,35 @@ public actor FileService {
         return entry
     }
 
+    // MARK: Permanent delete (emptying the Trash — irreversible)
+
+    /// Permanently remove a single item already sitting in the Trash.
+    /// Journaled as `.permanentDelete`: unlike `trash(_:agentID:)`, there is no
+    /// `destinationPath` to restore from, so this can never be undone from the
+    /// Recovery Center — it exists purely as an audit record. Callers are
+    /// expected to have already gated this behind an explicit approval, since
+    /// `.permanentDelete` is always destructive.
+    @discardableResult
+    public func permanentlyDelete(_ url: URL, agentID: AgentID) async throws -> JournalEntry {
+        guard fileManager.fileExists(atPath: url.path) else {
+            throw FileServiceError.sourceMissing(url.path)
+        }
+
+        var entry = JournalEntry(
+            agentID: agentID,
+            kind: .permanentDelete,
+            sourcePath: url.path,
+            destinationPath: nil
+        )
+        try await store.record(entry)
+
+        try fileManager.removeItem(at: url)
+
+        entry.appliedAt = Date()
+        try await store.update(entry)
+        return entry
+    }
+
     // MARK: Undo / Restore
 
     /// Reverse a previously applied, reversible operation — a move/rename back

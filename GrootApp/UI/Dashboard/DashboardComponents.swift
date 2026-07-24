@@ -181,6 +181,7 @@ private struct ActivityRow: View {
         case .move: return "arrow.right.doc.on.clipboard"
         case .rename: return "pencil"
         case .trash: return "trash"
+        case .permanentDelete: return "trash.slash"
         }
     }
 }

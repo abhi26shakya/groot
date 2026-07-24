@@ -144,9 +144,14 @@ public enum RuntimeComposer {
             approvals: approvals,
             autonomy: await autonomy("empty-folder-cleanup", .approval))
 
+        let trashManager = TrashManagerAgent(
+            fileService: fileService,
+            approvals: approvals,
+            autonomy: await autonomy("trash-manager", .approval))
+
         let agents: [any Agent] = [
             monitor, screenshot, downloadsOrganizer, desktopCleaner, duplicates, storage,
-            categorization, smartRename, largeFileManager, emptyFolderCleanup
+            categorization, smartRename, largeFileManager, emptyFolderCleanup, trashManager
         ]
         for agent in agents { await manager.register(agent) }
         await manager.startEventPump()
