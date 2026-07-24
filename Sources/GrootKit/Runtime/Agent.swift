@@ -16,6 +16,12 @@ public protocol Agent: Actor {
     /// The autonomy mode this agent runs under. Defaults to the safest mode.
     var autonomy: AutonomyMode { get set }
 
+    /// How often this agent wants `.tick`. Declared as a protocol requirement
+    /// (not just an extension default) so it dispatches dynamically through
+    /// `any Agent` — an extension-only member would statically bind to the
+    /// default and silently ignore every agent's override.
+    nonisolated var tickCadence: TickCadence { get }
+
     /// Called once when the agent is registered, before any events flow. Use to
     /// capture the bus handle so the agent can publish reports.
     func attach(to bus: MessageBus) async
@@ -34,14 +40,19 @@ public protocol Agent: Actor {
 public extension Agent {
     /// Convenience so `AgentManager` and the UI can read the id without awaiting.
     nonisolated var id: AgentID { descriptor.id }
+
+    /// Change the agent's autonomy from outside the actor. An isolated property
+    /// can't be assigned across an `await`, so the UI goes through this.
+    ///
+    /// Raising autonomy never weakens safety: `ApprovalPolicy` still refuses to
+    /// let any mode perform destructive work unattended.
+    func setAutonomy(_ mode: AutonomyMode) async {
+        autonomy = mode
+    }
 }
 
-/// An agent that raises `ApprovalRequest`s and can act on the user's decision.
-/// The UI routes approve/reject to the right agent by `ApprovalRequest.agentID`
-/// without needing to know the concrete agent type.
-public protocol ApprovingAgent: Agent {
-    /// Carry out the proposal behind this request id.
-    func approve(_ requestID: UUID) async
-    /// Discard the proposal, leaving files untouched.
-    func reject(_ requestID: UUID) async
-}
+// `ApprovingAgent` used to live here, requiring every agent to keep its own
+// `pending` dictionary and re-implement the autonomy switch. Approvals now go
+// through `ApprovalService`, which owns the pending requests and applies
+// `ApprovalPolicy` in one place — so the UI resolves decisions against the
+// service and never needs to know a concrete agent type.

@@ -48,7 +48,9 @@ final class AnalysisAgentsTests: XCTestCase {
 
         let fileService = FileService(store: InMemoryJournalStore())
         let bus = MessageBus()
-        let agent = DuplicateDetectionAgent(roots: [sandbox], fileService: fileService, autonomy: .approval)
+        let approvals = ApprovalService(bus: bus)
+        let agent = DuplicateDetectionAgent(
+            roots: [sandbox], fileService: fileService, approvals: approvals, autonomy: .approval)
         await agent.attach(to: bus)
         await agent.start()
 
@@ -59,7 +61,9 @@ final class AnalysisAgentsTests: XCTestCase {
                 if case .approvalRequested(let req) = event { await collector.set(req) }
             }
         }
-        await agent.scan()
+        // `scan()` now suspends on the safety gate, so drive it from a task and
+        // answer through the service.
+        let scanning = Task { await agent.scan() }
         try await Task.sleep(nanoseconds: 200_000_000)
         sub.cancel()
 
@@ -68,7 +72,8 @@ final class AnalysisAgentsTests: XCTestCase {
         XCTAssertTrue(request.isDestructive)
         XCTAssertEqual(request.itemCount, 1)
 
-        await agent.approve(request.id)
+        await approvals.approve(request.id)
+        await scanning.value
         // Original kept; duplicate removed from its original location (trashed).
         XCTAssertTrue(FileManager.default.fileExists(atPath: a.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: b.path))

@@ -15,6 +15,8 @@ public enum BusEvent: Sendable {
 
     // MARK: Agent → coordinator signals
     case agentReport(AgentReport)
+    /// An agent hit an error. Carries the cause, unlike `AgentState.error`.
+    case agentFailed(AgentID, String)
     /// An agent recorded a journaled operation (for activity log / recovery UI).
     case operationJournaled(JournalEntry)
     /// An agent needs the user to approve a batch before proceeding.

@@ -38,13 +38,17 @@ final class AppModel {
     private var bus: MessageBus?
     private var manager: AgentManager?
     private var fileService: FileService?
-    /// Agents that raise approvals, keyed by id so the UI can route decisions
-    /// without knowing concrete types.
-    private var approvingAgents: [AgentID: any ApprovingAgent] = [:]
+    /// The single safety gate. The UI resolves every decision here and never
+    /// needs to know which concrete agent raised the request.
+    private var approvals: ApprovalService?
+    /// Durable user configuration — roots, per-agent autonomy, AI consent.
+    private var settings: SettingsStore?
+    /// Surfaces approvals raised while the app isn't in front.
+    private let notifier: any Notifying = UserNotifier()
 
-    private var tickTask: Task<Void, Never>?
     private var pollTask: Task<Void, Never>?
     private var approvalTask: Task<Void, Never>?
+    private var refreshTask: Task<Void, Never>?
     private var bubblePanel: BubblePanelController?
 
     private var started = false
@@ -57,50 +61,27 @@ final class AppModel {
 
         hasFullDiskAccess = Self.checkFullDiskAccess()
 
-        let bus = MessageBus()
-        let manager = AgentManager(bus: bus)
+        // All wiring lives in `RuntimeComposer` (GrootKit) so it can be tested
+        // headlessly. This view model just holds the result and renders it.
+        let runtime = await RuntimeComposer.compose()
 
-        // Persistence: durable SQLite, falling back to in-memory if it can't open.
-        let store: JournalStore = (try? SQLiteJournalStore()) ?? InMemoryJournalStore()
-        let fileService = FileService(store: store)
-
-        // Agents.
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let desktop = home.appendingPathComponent("Desktop")
-        let downloads = home.appendingPathComponent("Downloads")
-
-        let monitor = FileMonitoringAgent(roots: [desktop, downloads])
-        let screenshot = ScreenshotAgent(
-            recognizer: VisionOCR(),
-            suggester: HeuristicFilenameSuggester(),
-            fileService: fileService,
-            autonomy: .approval)
-        let downloadsOrganizer = DownloadsOrganizerAgent(
-            root: downloads, fileService: fileService, autonomy: .approval)
-        let desktopCleaner = DesktopCleanerAgent(
-            root: desktop, fileService: fileService, autonomy: .approval)
-        let duplicates = DuplicateDetectionAgent(
-            roots: [desktop, downloads], fileService: fileService, autonomy: .approval)
-        let storage = StorageAnalyzerAgent(roots: [desktop, downloads])
-
-        let allAgents: [any Agent] = [
-            monitor, screenshot, downloadsOrganizer, desktopCleaner, duplicates, storage
-        ]
-        for agent in allAgents { await manager.register(agent) }
-        await manager.startEventPump()
-
-        // Index the approving agents for UI-driven approve/reject routing.
-        for case let approver as any ApprovingAgent in allAgents {
-            approvingAgents[approver.id] = approver
+        self.bus = runtime.bus
+        self.manager = runtime.manager
+        self.fileService = runtime.fileService
+        self.approvals = runtime.approvals
+        self.settings = runtime.settings
+        if let settings = runtime.settings {
+            showBubbles = await settings.showBubbles()
         }
 
-        self.bus = bus
-        self.manager = manager
-        self.fileService = fileService
+        // Ask once for permission to surface approvals raised in the background —
+        // agents now wait on them, so an unnoticed prompt blocks real work.
+        _ = await notifier.requestAuthorization()
 
-        startTicking(bus: bus)
+        // The runtime owns its own clock now — the UI no longer drives it.
+        await runtime.manager.startClock()
         startPolling()
-        startApprovalListener(bus: bus)
+        startApprovalListener(bus: runtime.bus)
 
         if showBubbles { presentBubbles() }
     }
@@ -142,19 +123,34 @@ final class AppModel {
     // MARK: Approvals
 
     func approve(_ request: ApprovalRequest) async {
-        await approvingAgents[request.agentID]?.approve(request.id)
+        await approvals?.approve(request.id)
         pendingApprovals.removeAll { $0.id == request.id }
         await refresh()
     }
 
     func reject(_ request: ApprovalRequest) async {
-        await approvingAgents[request.agentID]?.reject(request.id)
+        await approvals?.reject(request.id)
         pendingApprovals.removeAll { $0.id == request.id }
     }
 
     func approveAll() async {
         let requests = pendingApprovals
         for request in requests { await approve(request) }
+    }
+
+    // MARK: Settings
+
+    /// Change an agent's autonomy and remember it across launches.
+    func setAutonomy(_ mode: AutonomyMode, for id: AgentID) async {
+        await settings?.setAutonomy(mode, for: id)
+        if let agent = await manager?.agent(id) {
+            await agent.setAutonomy(mode)
+        }
+        await refresh()
+    }
+
+    func setWatchedRoots(_ roots: [URL]) async {
+        await settings?.setWatchedRoots(roots)
     }
 
     // MARK: Undo
@@ -175,20 +171,14 @@ final class AppModel {
 
     // MARK: Internal loops
 
-    private func startTicking(bus: MessageBus) {
-        tickTask = Task {
-            while !Task.isCancelled {
-                await bus.publish(.tick(Date()))
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-            }
-        }
-    }
-
+    /// Uptime is the only thing that changes without an event, so it's the only
+    /// thing still polled — and at 2 s instead of the old 0.5 s whole-snapshot
+    /// poll. Everything else updates when the runtime says something happened.
     private func startPolling() {
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refresh()
-                try? await Task.sleep(nanoseconds: 500_000_000)
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
         }
     }
@@ -199,12 +189,21 @@ final class AppModel {
             for await event in stream {
                 switch event {
                 case .approvalRequested(let request):
-                    await MainActor.run {
-                        guard let self else { return }
-                        if !self.pendingApprovals.contains(where: { $0.id == request.id }) {
-                            self.pendingApprovals.append(request)
+                    let isNew = await MainActor.run {
+                        guard let self else { return false }
+                        guard !self.pendingApprovals.contains(where: { $0.id == request.id }) else {
+                            return false
                         }
+                        self.pendingApprovals.append(request)
+                        return !NSApplication.shared.isActive
                     }
+                    if isNew, let notifier = await self?.notifier {
+                        await notifier.notifyApprovalRequested(request)
+                    }
+                case .agentReport, .agentFailed, .operationJournaled:
+                    // Event-driven: refresh when the runtime actually reports
+                    // something, rather than re-reading a snapshot twice a second.
+                    await self?.scheduleRefresh()
                 case .duplicatesFound(let report):
                     await MainActor.run { self?.duplicateReport = report; self?.isScanning = false }
                 case .storageAnalyzed(let report):
@@ -216,11 +215,28 @@ final class AppModel {
         }
     }
 
+    /// Coalesce bursts into one refresh. A bulk operation (a duplicate sweep
+    /// trashing 200 files) publishes an event per file; without this, each one
+    /// would trigger a full snapshot and a `SELECT *` over the journal.
+    private func scheduleRefresh() {
+        guard refreshTask == nil else { return }
+        refreshTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            self?.refreshTask = nil
+            await self?.refresh()
+        }
+    }
+
     private func refresh() async {
         guard let manager else { return }
         let snap = await manager.snapshot()
         self.agents = snap.agents
         self.uptime = snap.uptime
+        await refreshActivity()
+    }
+
+    /// Just the journal — cheap enough to run on every journaled operation.
+    private func refreshActivity() async {
         if let history = try? await fileService?.history() {
             self.activity = history
         }
