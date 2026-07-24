@@ -25,7 +25,7 @@ anywhere else. New specs are created with the `/create-spec` command
 | 05 | Platform | 🔜 Planned | [05-platform.md](05-platform.md) |
 | 06 | Recovery Center & Undo History | 🔜 Planned | [06-recovery-center.md](06-recovery-center.md) |
 | 07 | System Architecture — Core Services Layer | ✅ Complete | [07-system-architecture.md](07-system-architecture.md) |
-| 08 | AI Categorization Agent — Content-Aware Sorting | 🔜 Planned | [08-ai-categorization.md](08-ai-categorization.md) |
+| 08 | AI Categorization Agent — Content-Aware Sorting | ✅ Complete | [08-ai-categorization.md](08-ai-categorization.md) |
 
 The authoritative architecture/roadmap narrative lives in
 `~/.claude/plans/read-this-and-come-validated-owl.md`; these files break it into
