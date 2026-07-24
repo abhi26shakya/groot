@@ -25,6 +25,8 @@ public enum BusEvent: Sendable {
     case duplicatesFound(DuplicateReport)
     /// The Storage Analyzer finished an analysis.
     case storageAnalyzed(StorageReport)
+    /// The Large File Manager finished a scan.
+    case largeFilesFound(LargeFileReport)
 
     // MARK: Timing
     /// Periodic tick the coordinator broadcasts so agents can do time-based work

@@ -22,8 +22,18 @@ file-management capabilities.
   disjoint from `ScreenshotAgent` (mutual exclusion) and safe alongside
   `CategorizationAgent` (documented race, self-healing via `FileService`'s
   guards, explicit `.fileCreated` re-publish for downstream agents).
-- **Large File Manager** — detect files over configurable limits; suggest
-  compress/archive/delete/move.
+- ✅ **Large File Manager** — detect files over configurable limits; suggest
+  compress/archive/delete/move. Shipped as `LargeFileManagerAgent`
+  (`Sources/GrootKit/Agents/LargeFileManagerAgent.swift`): command-driven
+  (`.command(.scanLargeFiles)`, mirroring `DuplicateDetectionAgent`), finds
+  files at/above a configurable threshold (`SettingsStore.largeFileThresholdBytes`,
+  default 500 MB) and offers a single bulk action — **archive** into a dated
+  `Large Files/<YYYY-MM>/` folder (default, reversible) or **trash** (opt-in,
+  always approval-gated regardless of autonomy) — via
+  `SettingsStore.largeFileAction`. True compression/zipping is explicitly
+  **deferred**: no archive-creation infrastructure exists yet in GrootKit
+  (would need Apple's `Compression` framework or a `ditto`/`zip` shell-out) —
+  a future follow-up, not part of this deliverable.
 - **Empty Folder Cleanup** — detect + preview + confirm.
 - **Intelligent Trash Management** — estimate recoverable space, check backup
   availability, summarize, require approval before emptying.

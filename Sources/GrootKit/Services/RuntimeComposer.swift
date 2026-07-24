@@ -129,9 +129,17 @@ public enum RuntimeComposer {
             approvals: approvals,
             autonomy: await autonomy("smart-rename", .approval))
 
+        let largeFileManager = LargeFileManagerAgent(
+            roots: roots,
+            fileService: fileService,
+            approvals: approvals,
+            thresholdBytes: await settings?.largeFileThresholdBytes() ?? 500 * 1024 * 1024,
+            action: await settings?.largeFileAction() ?? .archive,
+            autonomy: await autonomy("large-file-manager", .approval))
+
         let agents: [any Agent] = [
             monitor, screenshot, downloadsOrganizer, desktopCleaner, duplicates, storage,
-            categorization, smartRename
+            categorization, smartRename, largeFileManager
         ]
         for agent in agents { await manager.register(agent) }
         await manager.startEventPump()

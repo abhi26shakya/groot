@@ -29,6 +29,8 @@ public actor SettingsStore {
         static let categorizationThreshold = "categorization_threshold"
         static let categorizationFallback = "categorization_fallback"
         static let smartRenameAllowedExtensions = "smart_rename_allowed_extensions"
+        static let largeFileThresholdBytes = "large_file_threshold_bytes"
+        static let largeFileAction = "large_file_action"
     }
 
     // MARK: Raw key/value access
@@ -190,6 +192,34 @@ public actor SettingsStore {
     public func setSmartRenameAllowedExtensions(_ extensions: Set<String>?) async {
         await setString((extensions ?? []).sorted().joined(separator: ","),
                         for: Key.smartRenameAllowedExtensions)
+    }
+
+    // MARK: Large File Manager
+
+    /// Files at/above this size are flagged. Defaults to 500 MB, matching the
+    /// threshold the Storage Analyzer already uses for its own insight.
+    public func largeFileThresholdBytes() async -> UInt64 {
+        guard let raw = await string(Key.largeFileThresholdBytes), let value = UInt64(raw) else {
+            return 500 * 1024 * 1024
+        }
+        return value
+    }
+
+    public func setLargeFileThresholdBytes(_ value: UInt64) async {
+        await setString(String(value), for: Key.largeFileThresholdBytes)
+    }
+
+    /// What to do with a flagged file. Defaults to **archive** — reversible —
+    /// rather than trash, which is destructive even though always gated.
+    public func largeFileAction() async -> LargeFileAction {
+        guard let raw = await string(Key.largeFileAction), let action = LargeFileAction(rawValue: raw) else {
+            return .archive
+        }
+        return action
+    }
+
+    public func setLargeFileAction(_ value: LargeFileAction) async {
+        await setString(value.rawValue, for: Key.largeFileAction)
     }
 
     // MARK: UI

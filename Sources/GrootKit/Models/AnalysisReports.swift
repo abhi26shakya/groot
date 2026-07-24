@@ -82,6 +82,40 @@ public struct StorageReport: Sendable, Hashable {
     }
 }
 
+/// What the Large File Manager does with a file at/above its threshold.
+public enum LargeFileAction: String, Sendable, Hashable, Codable {
+    /// Move into a dated `Large Files/<YYYY-MM>/` folder — reversible.
+    case archive
+    /// Move to the Trash — destructive, always approval-gated regardless of
+    /// autonomy (see `FileOperationKind.isDestructive`).
+    case trash
+}
+
+public extension LargeFileAction {
+    var operationKind: FileOperationKind {
+        switch self {
+        case .archive: return .move
+        case .trash: return .trash
+        }
+    }
+}
+
+/// Result of a large-file scan.
+public struct LargeFileReport: Sendable, Hashable {
+    /// Files at/above the threshold, largest first.
+    public let entries: [FileEntry]
+    public let thresholdBytes: UInt64
+    public let scannedAt: Date
+
+    public init(entries: [FileEntry], thresholdBytes: UInt64, scannedAt: Date = Date()) {
+        self.entries = entries
+        self.thresholdBytes = thresholdBytes
+        self.scannedAt = scannedAt
+    }
+
+    public var totalBytes: UInt64 { entries.reduce(0) { $0 + $1.sizeBytes } }
+}
+
 /// Shared byte formatting for UI and log messages.
 public enum ByteFormat {
     public static func string(_ bytes: UInt64) -> String {
