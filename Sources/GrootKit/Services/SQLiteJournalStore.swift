@@ -50,6 +50,59 @@ public actor SQLiteJournalStore: JournalStore {
         return rows.map(Self.decode)
     }
 
+    public func entries(matching filter: JournalFilter) async throws -> [JournalEntry] {
+        var clauses: [String] = []
+        var bindings: [SQLValue] = []
+
+        if let agentID = filter.agentID {
+            clauses.append("agent_id = ?")
+            bindings.append(.text(agentID.raw))
+        }
+        if !filter.kinds.isEmpty {
+            let placeholders = filter.kinds.map { _ in "?" }.joined(separator: ", ")
+            clauses.append("kind IN (\(placeholders))")
+            bindings.append(contentsOf: filter.kinds.map { .text($0.rawValue) })
+        }
+        switch filter.revertState {
+        case .any: break
+        case .revertedOnly: clauses.append("reverted_at IS NOT NULL")
+        case .appliedOnly: clauses.append("reverted_at IS NULL")
+        }
+        if let range = filter.dateRange {
+            clauses.append("timestamp >= ? AND timestamp <= ?")
+            bindings.append(.date(range.lowerBound))
+            bindings.append(.date(range.upperBound))
+        }
+        if let search = filter.searchText, !search.isEmpty {
+            clauses.append("(source_path LIKE ? ESCAPE '\\' OR destination_path LIKE ? ESCAPE '\\')")
+            let pattern = "%\(Self.escapeLike(search))%"
+            bindings.append(.text(pattern))
+            bindings.append(.text(pattern))
+        }
+
+        let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+        let rows = try await db.query(
+            "SELECT \(Self.columns) FROM undo_journal \(whereSQL) ORDER BY timestamp DESC;",
+            bindings)
+        return rows.map(Self.decode)
+    }
+
+    public func deleteEntries(olderThan date: Date, revertedOnly: Bool) async throws {
+        if revertedOnly {
+            try await db.execute(
+                "DELETE FROM undo_journal WHERE timestamp < ? AND reverted_at IS NOT NULL;",
+                [.date(date)])
+        } else {
+            try await db.execute(
+                "DELETE FROM undo_journal WHERE timestamp < ?;",
+                [.date(date)])
+        }
+    }
+
+    public func deleteAll() async throws {
+        try await db.execute("DELETE FROM undo_journal;")
+    }
+
     // MARK: Mapping
 
     private func upsert(_ entry: JournalEntry) async throws {
@@ -74,6 +127,14 @@ public actor SQLiteJournalStore: JournalStore {
             .date(orNull: entry.appliedAt),
             .date(orNull: entry.revertedAt)
         ])
+    }
+
+    /// Escape SQLite `LIKE` metacharacters so user search text is matched
+    /// literally rather than as a wildcard pattern.
+    private static func escapeLike(_ text: String) -> String {
+        text.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "%", with: "\\%")
+            .replacingOccurrences(of: "_", with: "\\_")
     }
 
     private static func decode(_ row: SQLRow) -> JournalEntry {

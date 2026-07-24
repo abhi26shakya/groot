@@ -15,6 +15,13 @@ struct GrootApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
 
+        Window("Recovery Center", id: "recovery") {
+            RecoveryCenterView()
+                .environment(model)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentMinSize)
+
         MenuBarExtra("Groot", systemImage: "sparkles") {
             MenuBarView()
                 .environment(model)

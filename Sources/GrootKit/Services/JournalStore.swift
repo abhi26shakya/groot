@@ -16,6 +16,18 @@ public protocol JournalStore: Sendable {
 
     /// All entries, newest first — powers the Recovery Center / activity log.
     func allEntries() async throws -> [JournalEntry]
+
+    /// Filtered/searched view for the Recovery Center.
+    func entries(matching filter: JournalFilter) async throws -> [JournalEntry]
+
+    /// Retention: remove entries older than `date`. When `revertedOnly` is
+    /// true, only already-reverted rows are removed — rows for unreverted
+    /// operations are kept regardless of age. Deletes journal rows only; never
+    /// touches a file on disk.
+    func deleteEntries(olderThan date: Date, revertedOnly: Bool) async throws
+
+    /// Clear the entire journal. Rows only; never touches a file on disk.
+    func deleteAll() async throws
 }
 
 /// Simple in-memory journal for Phase 0 and unit tests.
@@ -38,5 +50,21 @@ public actor InMemoryJournalStore: JournalStore {
 
     public func allEntries() async throws -> [JournalEntry] {
         entries.values.sorted { $0.timestamp > $1.timestamp }
+    }
+
+    public func entries(matching filter: JournalFilter) async throws -> [JournalEntry] {
+        entries.values.filter(filter.matches).sorted { $0.timestamp > $1.timestamp }
+    }
+
+    public func deleteEntries(olderThan date: Date, revertedOnly: Bool) async throws {
+        entries = entries.filter { _, entry in
+            guard entry.timestamp < date else { return true } // keep: not old enough
+            if revertedOnly { return entry.revertedAt == nil } // keep: not yet reverted
+            return false // delete
+        }
+    }
+
+    public func deleteAll() async throws {
+        entries.removeAll()
     }
 }

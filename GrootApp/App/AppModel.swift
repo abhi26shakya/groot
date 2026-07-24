@@ -2,6 +2,14 @@ import SwiftUI
 import Observation
 import GrootKit
 
+/// Per-item result of a Recovery Center batch restore — some entries may no
+/// longer be restorable (Trash emptied, original path now occupied), so a
+/// batch reports what happened to each one rather than failing wholesale.
+struct BatchRestoreOutcome: Sendable {
+    let restoredCount: Int
+    let skipped: [(entry: JournalEntry, reason: String)]
+}
+
 /// The single MainActor-bound view model. Owns the whole runtime, wires the
 /// agents together, and exposes plain `@Observable` state the SwiftUI views and
 /// the floating bubble panel render.
@@ -14,6 +22,14 @@ final class AppModel {
     private(set) var pendingApprovals: [ApprovalRequest] = []
     private(set) var duplicateReport: DuplicateReport?
     private(set) var storageReport: StorageReport?
+    /// The Recovery Center's current result set. Kept in sync by `refresh()`
+    /// (same event-driven path as `activity`), not only by explicit reloads —
+    /// so it doesn't go stale if a background agent journals an operation
+    /// while the window is open.
+    private(set) var recoveryEntries: [JournalEntry] = []
+    /// Set when an Undo/Restore fails without a crash — origin occupied, file
+    /// gone, or already reverted. Surfaced as an alert; cleared by `clearLastError()`.
+    private(set) var lastError: String?
     var uptime: TimeInterval = 0
     var isRunning = false
     var isScanning = false
@@ -50,6 +66,9 @@ final class AppModel {
     private var approvalTask: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
     private var bubblePanel: BubblePanelController?
+    /// The filter the Recovery Center is currently showing, so background
+    /// refreshes can keep `recoveryEntries` in sync with it.
+    private var recoveryFilter = JournalFilter()
 
     private var started = false
 
@@ -153,10 +172,86 @@ final class AppModel {
         await settings?.setWatchedRoots(roots)
     }
 
-    // MARK: Undo
+    // MARK: Undo / Restore (Recovery Center)
 
     func undo(_ entry: JournalEntry) async {
-        try? await fileService?.undo(entry.id)
+        do {
+            guard let reverted = try await fileService?.undo(entry.id) else { return }
+            // The File Monitor's loop guard needs this too, or restoring a file
+            // re-triggers the agent that moved it away in the first place.
+            await bus?.publish(.operationJournaled(reverted))
+            await refresh()
+        } catch {
+            lastError = Self.describe(error)
+        }
+    }
+
+    /// Semantically distinct from `undo` in the UI (trashed rows read as
+    /// "Restore"), but the same underlying operation.
+    func restore(_ entry: JournalEntry) async {
+        await undo(entry)
+    }
+
+    func clearLastError() { lastError = nil }
+
+    /// Attempt to restore every entry in a multi-selection independently,
+    /// reporting per-item success/failure (with the actual failure reason)
+    /// rather than aborting on the first one that's no longer restorable.
+    @discardableResult
+    func batchRestore(_ entries: [JournalEntry]) async -> BatchRestoreOutcome {
+        var restoredCount = 0
+        var skipped: [(JournalEntry, String)] = []
+        for entry in entries {
+            do {
+                guard let reverted = try await fileService?.restore(entry.id) else { continue }
+                await bus?.publish(.operationJournaled(reverted))
+                restoredCount += 1
+            } catch {
+                skipped.append((entry, Self.describe(error)))
+            }
+        }
+        await refresh()
+        return BatchRestoreOutcome(restoredCount: restoredCount, skipped: skipped)
+    }
+
+    private static func describe(_ error: Error) -> String {
+        guard let fsError = error as? FileService.FileServiceError else {
+            return "Something went wrong."
+        }
+        switch fsError {
+        case .sourceMissing: return "Unavailable — the file no longer exists."
+        case .destinationExists: return "Can't restore: the original location is occupied."
+        case .notReversible: return "This operation can't be reversed."
+        case .alreadyReverted: return "Already reverted."
+        }
+    }
+
+    // MARK: Recovery Center
+
+    /// Load (or reload) the Recovery Center's result set against a filter.
+    /// The filter is remembered so `refresh()` can keep the list current in
+    /// the background too — callers don't have to reload after every action.
+    func loadRecovery(filter: JournalFilter = JournalFilter()) async {
+        recoveryFilter = filter
+        await refreshRecovery()
+    }
+
+    /// How many trashed items haven't been restored yet — used to warn before
+    /// "Clear all history" would erase Groot's only record of how to reach
+    /// them (the physical files stay in Trash either way).
+    func unrevertedTrashCount() async -> Int {
+        let entries = (try? await fileService?.history(
+            matching: JournalFilter(kinds: [.trash], revertState: .appliedOnly))) ?? []
+        return entries.count
+    }
+
+    func clearHistory(olderThan date: Date, revertedOnly: Bool) async {
+        try? await fileService?.clearHistory(olderThan: date, revertedOnly: revertedOnly)
+        await refresh()
+    }
+
+    func clearAllHistory() async {
+        try? await fileService?.clearAllHistory()
         await refresh()
     }
 
@@ -233,12 +328,22 @@ final class AppModel {
         self.agents = snap.agents
         self.uptime = snap.uptime
         await refreshActivity()
+        await refreshRecovery()
     }
 
     /// Just the journal — cheap enough to run on every journaled operation.
     private func refreshActivity() async {
         if let history = try? await fileService?.history() {
             self.activity = history
+        }
+    }
+
+    /// The Recovery Center's list, against whatever filter it's currently
+    /// showing. Runs alongside `refreshActivity()` so the window doesn't go
+    /// stale while a background agent journals new operations.
+    private func refreshRecovery() async {
+        if let entries = try? await fileService?.history(matching: recoveryFilter) {
+            self.recoveryEntries = entries
         }
     }
 

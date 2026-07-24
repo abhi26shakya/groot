@@ -1,6 +1,6 @@
 # Phase 06: Recovery Center & Undo History
 
-**Status:** 🔜 Planned
+**Status:** ✅ Complete
 **Targets:** `GrootKit` + `GrootApp`
 
 ## Objective
@@ -143,32 +143,32 @@ Internal (no network API). Additions:
 
 ## Acceptance Criteria
 
-- [ ] A Recovery Center window lists the complete journal, newest first.
-- [ ] Filtering by agent/kind/reverted and searching by filename narrows the list.
-- [ ] Undo on a move/rename restores the file to its original path and marks the
+- [x] A Recovery Center window lists the complete journal, newest first.
+- [x] Filtering by agent/kind/reverted and searching by filename narrows the list.
+- [x] Undo on a move/rename restores the file to its original path and marks the
       row reverted.
-- [ ] Restore on a trashed duplicate returns it from the Trash to its original
+- [x] Restore on a trashed duplicate returns it from the Trash to its original
       path and marks the row reverted.
-- [ ] Batch restore of a multi-selection reports N restored / M skipped with
+- [x] Batch restore of a multi-selection reports N restored / M skipped with
       reasons and reverts only the successful ones.
-- [ ] "Clear history" removes journal rows without touching any file on disk.
-- [ ] Unavailable/legacy/already-reverted rows show correct status and disabled
+- [x] "Clear history" removes journal rows without touching any file on disk.
+- [x] Unavailable/legacy/already-reverted rows show correct status and disabled
       actions.
 
 ## Testing Checklist
 
-- [ ] `FileService.trash` records the resulting Trash URL in `destinationPath`.
-- [ ] `FileService.restore`/`undo` moves a trashed item back to origin; sets
+- [x] `FileService.trash` records the resulting Trash URL in `destinationPath`.
+- [x] `FileService.restore`/`undo` moves a trashed item back to origin; sets
       `revertedAt`; publishes `.operationJournaled`.
-- [ ] Restore rejects when origin is occupied (`destinationExists`) and when the
+- [x] Restore rejects when origin is occupied (`destinationExists`) and when the
       trashed file is missing (`sourceMissing`).
-- [ ] `JournalStore.entries(matching:)` returns correct results for each filter
+- [x] `JournalStore.entries(matching:)` returns correct results for each filter
       dimension and combinations, in both in-memory and SQLite implementations.
-- [ ] `deleteEntries(olderThan:revertedOnly:)` and `deleteAll()` remove only the
+- [x] `deleteEntries(olderThan:revertedOnly:)` and `deleteAll()` remove only the
       intended rows and touch no files (verify a fixture file still exists after).
-- [ ] Batch restore over a mixed selection (some restorable, some not) yields the
+- [x] Batch restore over a mixed selection (some restorable, some not) yields the
       expected per-item outcomes.
-- [ ] Full suite green: `swift test`; app builds: `xcodegen generate && xcodebuild -scheme GrootApp build`.
+- [x] Full suite green: `swift test`; app builds: `xcodegen generate && xcodebuild -scheme GrootApp build`.
 
 ## Dependencies
 

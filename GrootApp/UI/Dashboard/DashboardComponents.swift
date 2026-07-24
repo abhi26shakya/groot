@@ -156,12 +156,20 @@ private struct ActivityRow: View {
                     .font(.caption2).foregroundStyle(.secondary)
             }
             Spacer()
-            if entry.revertedAt != nil {
+            // Shared with the Recovery Center (`RecoveryRow`) via
+            // `JournalEntry.recoveryStatus(fileManager:)`, so the two never
+            // diverge on what counts as currently restorable.
+            switch entry.recoveryStatus() {
+            case .reverted:
                 Text("Reverted").font(.caption2).foregroundStyle(.tertiary)
-            } else if entry.kind.isReversibleInApp {
-                Button("Undo") { Task { await model.undo(entry) } }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+            case .applied:
+                Button(entry.kind == .trash ? "Restore" : "Undo") {
+                    Task { await model.undo(entry) }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            case .unavailable:
+                EmptyView()
             }
         }
         .padding(.horizontal, 16)

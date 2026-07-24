@@ -63,9 +63,10 @@ public actor FileService {
 
     // MARK: Delete (recoverable via Trash)
 
-    /// Move an item to the Trash. Journaled as a destructive op; the returned
-    /// entry records the source. The OS owns the trashed URL, so we don't store
-    /// a destination we could re-link from.
+    /// Move an item to the Trash. Journaled as a destructive op. The resulting
+    /// Trash URL (unknowable beforehand — the OS may rename on collision) is
+    /// captured and stored as `destinationPath`, which is what makes trashed
+    /// items restorable from the Recovery Center via `restore(_:)`.
     @discardableResult
     public func trash(_ url: URL, agentID: AgentID) async throws -> JournalEntry {
         guard fileManager.fileExists(atPath: url.path) else {
@@ -80,19 +81,23 @@ public actor FileService {
         )
         try await store.record(entry)
 
-        try fileManager.trashItem(at: url, resultingItemURL: nil)
+        var resultingItemURL: NSURL?
+        try fileManager.trashItem(at: url, resultingItemURL: &resultingItemURL)
 
+        entry.destinationPath = (resultingItemURL as URL?)?.path
         entry.appliedAt = Date()
         try await store.update(entry)
         return entry
     }
 
-    // MARK: Undo
+    // MARK: Undo / Restore
 
-    /// Reverse a previously applied, reversible operation (move/rename) by
-    /// moving the file back to its origin. Trash operations are not reversed
-    /// here — the user restores those from the Finder Trash.
-    public func undo(_ entryID: UUID) async throws {
+    /// Reverse a previously applied, reversible operation — a move/rename back
+    /// to its origin, or (since trash records its resulting Trash URL as
+    /// `destinationPath`) a trashed item back from `~/.Trash`. Both are the
+    /// same mechanics: move `destinationPath` back to `sourcePath`.
+    @discardableResult
+    public func undo(_ entryID: UUID) async throws -> JournalEntry {
         guard var entry = try await store.entry(entryID) else {
             throw FileServiceError.notReversible(entryID)
         }
@@ -121,11 +126,35 @@ public actor FileService {
 
         entry.revertedAt = Date()
         try await store.update(entry)
+        return entry
+    }
+
+    /// Semantically-named wrapper over `undo(_:)` for trashed rows — the
+    /// Recovery Center's "Restore" action reads more naturally against this
+    /// name than "undo a trash", even though the mechanics are identical.
+    @discardableResult
+    public func restore(_ entryID: UUID) async throws -> JournalEntry {
+        try await undo(entryID)
     }
 
     // MARK: Read-through for the Recovery Center
 
     public func history() async throws -> [JournalEntry] {
         try await store.allEntries()
+    }
+
+    /// Filtered/searched history for the Recovery Center.
+    public func history(matching filter: JournalFilter) async throws -> [JournalEntry] {
+        try await store.entries(matching: filter)
+    }
+
+    // MARK: Retention (journal rows only — never touches a file on disk)
+
+    public func clearHistory(olderThan date: Date, revertedOnly: Bool) async throws {
+        try await store.deleteEntries(olderThan: date, revertedOnly: revertedOnly)
+    }
+
+    public func clearAllHistory() async throws {
+        try await store.deleteAll()
     }
 }
