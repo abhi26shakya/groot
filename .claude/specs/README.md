@@ -20,7 +20,7 @@ anywhere else. New specs are created with the `/create-spec` command
 |---|-------|--------|------|
 | 01 | Foundation & Agent Runtime | ✅ Complete | [01-foundation-runtime.md](01-foundation-runtime.md) |
 | 02 | Vertical MVP (shippable v0.1) | ✅ Complete | [02-vertical-mvp.md](02-vertical-mvp.md) |
-| 03 | Intelligence | 🔜 Planned | [03-intelligence.md](03-intelligence.md) |
+| 03 | Intelligence | 🔧 In Progress | [03-intelligence.md](03-intelligence.md) |
 | 04 | Interaction & Learning | 🔜 Planned | [04-interaction-and-learning.md](04-interaction-and-learning.md) |
 | 05 | Platform | 🔜 Planned | [05-platform.md](05-platform.md) |
 | 06 | Recovery Center & Undo History | ✅ Complete | [06-recovery-center.md](06-recovery-center.md) |

@@ -28,6 +28,7 @@ public actor SettingsStore {
         static let customCategories = "custom_categories"
         static let categorizationThreshold = "categorization_threshold"
         static let categorizationFallback = "categorization_fallback"
+        static let smartRenameAllowedExtensions = "smart_rename_allowed_extensions"
     }
 
     // MARK: Raw key/value access
@@ -173,6 +174,22 @@ public actor SettingsStore {
 
     public func setCategorizationExtensionFallback(_ value: Bool) async {
         await setBool(value, for: Key.categorizationFallback)
+    }
+
+    // MARK: Smart Renaming
+
+    /// Extensions the Smart Rename agent is allowed to touch. `nil` (the
+    /// default) means "anything `ContentExtractor` can read" — no allow-list.
+    public func smartRenameAllowedExtensions() async -> Set<String>? {
+        guard let raw = await string(Key.smartRenameAllowedExtensions), !raw.isEmpty else {
+            return nil
+        }
+        return Set(raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() })
+    }
+
+    public func setSmartRenameAllowedExtensions(_ extensions: Set<String>?) async {
+        await setString((extensions ?? []).sorted().joined(separator: ","),
+                        for: Key.smartRenameAllowedExtensions)
     }
 
     // MARK: UI

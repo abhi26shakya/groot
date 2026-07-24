@@ -102,10 +102,14 @@ public enum RuntimeComposer {
             autonomy: await autonomy("duplicate-detector", .approval))
         let storage = StorageAnalyzerAgent(roots: roots)
 
+        let organizedRoot = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Documents/Groot", isDirectory: true)
+        let screenshotsRoot = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Screenshots", isDirectory: true)
+
         let categorization = CategorizationAgent(
             watchedRoots: roots,
-            organizedRoot: FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Documents/Groot", isDirectory: true),
+            organizedRoot: organizedRoot,
             fileService: fileService,
             provider: await makeCategorizationProvider(settings: settings),
             extractor: ContentExtractor(recognizer: options.recognizer ?? VisionOCR()),
@@ -115,9 +119,19 @@ public enum RuntimeComposer {
             approvals: approvals,
             autonomy: await autonomy("categorization", .approval))
 
+        let smartRename = SmartRenameAgent(
+            watchedRoots: roots,
+            excludedRoots: [organizedRoot, screenshotsRoot],
+            fileService: fileService,
+            extractor: ContentExtractor(recognizer: options.recognizer ?? VisionOCR()),
+            namer: suggester,
+            allowedExtensions: await settings?.smartRenameAllowedExtensions(),
+            approvals: approvals,
+            autonomy: await autonomy("smart-rename", .approval))
+
         let agents: [any Agent] = [
             monitor, screenshot, downloadsOrganizer, desktopCleaner, duplicates, storage,
-            categorization
+            categorization, smartRename
         ]
         for agent in agents { await manager.register(agent) }
         await manager.startEventPump()
